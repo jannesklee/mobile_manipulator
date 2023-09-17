@@ -1,7 +1,7 @@
 import numpy as np
+import modern_robotics as mr
 
 def next_state(state, speeds, dt, speedlimits):
-
     q = state[0:3]
     joint_state = state[3:3+5]
     wheel_state = state[3+5:12]
@@ -41,22 +41,98 @@ def next_state(state, speeds, dt, speedlimits):
 
     return np.append(np.append(new_chassis_state, new_joint_state), new_wheel_state)
 
-state = np.array([
-    0.000000,   0.000000,   0.000000,   
-    0.000000,   0.000000,   0.000000,   0.000000,   0.000000,
-    0.000000,   0.000000,   0.000000,   0.000000])
-#speeds = np.array([
-#    10., 10., 10., 10., 
-#    0., 0., 0., 0., 0.])
-#speeds = np.array([
-#    -10., 10., -10., 10., 
-#    0., 0., 0., 0., 0.])
-speeds = np.array([
-    -10., 10., 10., -10., 
-    0., 0., 0., 0., 0.])
-dt = 0.01
+def flatten_output(TrajectoryIn, gripper):
+    Trajectory = np.zeros((len(TrajectoryIn),13))
+    for i in range(len(TrajectoryIn)):
+        Trajectory[i,:9] = TrajectoryIn[i,0:3,0:3].flatten()
+        Trajectory[i,9:12] = TrajectoryIn[i,0:3,3].flatten()
+        Trajectory[i,12] = gripper
 
-for i in range(100):
-    state = next_state(state, speeds, dt, 100)
+    return Trajectory
 
-print(state)
+def trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff, k):
+    """
+    Input
+    The initial configuration of the end-effector in the reference trajectory: Tse_init
+    The cube's initial configuration: Tsc_init
+    The cube's desired final configuration: Tsc_final
+    The end-effector's configuration relative to the cube when it is grasping the cube: Tce_grasp
+    The end-effector's standoff configuration above the cube, before and after grasping, relative to the cube: Tce_standoff. This specifies the configuration of the end-effector {e} relative to the cube frame {c} before lowering to the grasp configuration Tce_grasp
+    The number of trajectory reference configurations per 0.01 seconds: k. value of 1 or greater. Although your final animation will be based on snapshots separated by 0.01 seconds in time, the points of your reference trajectory (and your controller servo cycle) can be at a higher frequency. For example, if you want your controller to operate at 1000 Hz, you should choose k = 10 {\displaystyle k=10} (10 reference configurations, and 10 feedback servo cycles, per 0.01 seconds). It is fine to choose k = 1 {\displaystyle k=1} if you'd like to keep things simple
+    """
+
+    # likely use ScrewTrajectory or CartesianTrajectory
+    Tf = k
+    method = 5 # cubic time scaling
+
+    # A trajectory to move the gripper from its initial configuration to a "standoff" configuration a few cm above the block.
+    InitialToStandoff = np.array(mr.ScrewTrajectory(Tse_init, Tce_standoff, Tf, k, method))
+    InitialToStandoffFlat = flatten_output(InitialToStandoff, 0.)
+    # A trajectory to move the gripper down to the grasp position.
+    StandoffToGrasp = np.array(mr.ScrewTrajectory(Tce_standoff, Tce_grasp, Tf, k, method))
+    StandoffToGraspFlat = flatten_output(StandoffToGrasp, 0.)
+
+    # Closing of the gripper
+    GripperSteps = 50
+    CloseGripperFlat = np.zeros((GripperSteps,13))
+    for i, gripper in enumerate(np.linspace(0,1,GripperSteps)):
+        CloseGripperFlat[i,:] = StandoffToGraspFlat[-1,:]
+        CloseGripperFlat[i,12] = gripper
+
+    # A trajectory to move the gripper back up to the "standoff" configuration.
+    GraspToStandoff = np.array(mr.ScrewTrajectory(Tce_grasp, Tce_standoff, Tf, k, method))
+    GraspToStandoffFlat = flatten_output(GraspToStandoff,1.)
+
+    # A trajectory to move the gripper to a "standoff" configuration above the final configuration.
+    # get same relative position as at the first standoff
+    Tsc_rel = np.matmul(np.linalg.inv(Tsc_init), Tce_standoff)
+    Tce_finalstandoff = np.matmul(Tsc_final,Tsc_rel)
+    StandoffToStandoff = np.array(mr.ScrewTrajectory(Tce_standoff, Tce_finalstandoff, Tf, k, method))
+    StandoffToStandoffFlat = flatten_output(StandoffToStandoff, 1.)
+
+    #A trajectory to move the gripper to the final configuration of the object.
+    Tsgrasp_rel = np.matmul(np.linalg.inv(Tsc_init), Tce_grasp)
+    Tce_finalgrasp = np.matmul(Tsc_final,Tsgrasp_rel)
+    StandoffToGraspFinal = np.array(mr.ScrewTrajectory(Tce_finalstandoff, Tce_finalgrasp, Tf, k, method))
+    StandoffToGraspFinalFlat = flatten_output(StandoffToGraspFinal, 1.)
+
+    # Opening of the gripper
+    OpenGripperFlat = np.zeros((GripperSteps,13))
+    for i, gripper in enumerate(np.linspace(1,0,GripperSteps)):
+        OpenGripperFlat[i,:] = StandoffToGraspFinalFlat[-1,:]
+        OpenGripperFlat[i,12] = gripper
+
+    #A trajectory to move the gripper back to the "standoff" configuration.
+    StandoffToStandoffFinal = np.array(mr.ScrewTrajectory(Tce_finalgrasp, Tce_finalstandoff, Tf, k, method))
+    StandoffToStandoffFinalFlat = flatten_output(StandoffToStandoffFinal, 0.)
+
+    Trajectory = np.concatenate((
+        InitialToStandoffFlat,
+        StandoffToGraspFlat,
+        CloseGripperFlat,
+        GraspToStandoffFlat,
+        StandoffToStandoffFlat,
+        StandoffToGraspFinalFlat,
+        OpenGripperFlat,
+        StandoffToStandoffFinalFlat), axis=0)
+
+    return Trajectory
+
+Tsc_init = np.array([[1, 0, 0, 1],[0, 1, 0, 0],[0, 0, 1, 0.025],[0, 0, 0, 1]])
+Tsc_final = np.array([[0, 1, 0, 0],[-1, 0, 0, -1],[0, 0, 1, 0.025],[0, 0, 0, 1]])
+
+
+Tce_grasp = Tsc_init
+Tse_init = np.array([[1, 0, 0, 0],[0, 1, 0, 0],[0, 0, 1, 0.5],[0, 0, 0, 1]])
+varphi = -3./4.*np.pi
+Tce_standoff = np.array([[np.cos(varphi), 0, -np.sin(varphi), 1],[0, 1, 0, 0],[np.sin(varphi), 0, np.cos(varphi), 0.125],[0, 0, 0, 1]])
+Tce_grasp = Tce_standoff.copy()
+Tce_grasp[0:3,3] = Tsc_init[0:3,3]
+
+Trajectory = trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff, 100)
+np.savetxt('test.csv', Trajectory, delimiter=', ')
+
+#Tsb = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
+#Tb0 = np.array([[1, 0, 0, 0.1662],[0, 1, 0, 0],[0, 0, 1, 0.0026],[0, 0, 0, 1]])
+#Tse_init = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
+#Tse_init = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
