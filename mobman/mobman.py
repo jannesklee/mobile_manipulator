@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.linalg import logm
 import modern_robotics as mr
 
 def next_state(state, speeds, dt, speedlimits):
@@ -118,21 +119,71 @@ def trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff,
 
     return Trajectory
 
-Tsc_init = np.array([[1, 0, 0, 1],[0, 1, 0, 0],[0, 0, 1, 0.025],[0, 0, 0, 1]])
-Tsc_final = np.array([[0, 1, 0, 0],[-1, 0, 0, -1],[0, 0, 1, 0.025],[0, 0, 0, 1]])
+def feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt):
 
+    Vd = mr.MatrixLog6(np.linalg.inv(Tse_d), Ts_d_next)
+    X_err = mr.MatrixLog6(np.matmul(np.linalg.inv(X),X))
 
-Tce_grasp = Tsc_init
-Tse_init = np.array([[1, 0, 0, 0],[0, 1, 0, 0],[0, 0, 1, 0.5],[0, 0, 0, 1]])
-varphi = -3./4.*np.pi
-Tce_standoff = np.array([[np.cos(varphi), 0, -np.sin(varphi), 1],[0, 1, 0, 0],[np.sin(varphi), 0, np.cos(varphi), 0.125],[0, 0, 0, 1]])
-Tce_grasp = Tce_standoff.copy()
-Tce_grasp[0:3,3] = Tsc_init[0:3,3]
+    np.matmul(mr.Adjoint(np.matmul(np.linalg.inv(Tse), Tse_d)), Vd) + \
+        np.matmul(Kp,Xerr) + np.matmul(Ki, Xerr)*dt
 
-Trajectory = trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff, 100)
-np.savetxt('test.csv', Trajectory, delimiter=', ')
+    pass
+
+def test_joint_limits():
+    #With these joint limits, you could write a function called testJointLimits to return a list of joint limits that are violated given the robot arm's configuration θ {\displaystyle \theta }. 
+    pass
+
+# input for trajectory generator
+#Tsc_init = np.array([[1, 0, 0, 1],[0, 1, 0, 0],[0, 0, 1, 0.025],[0, 0, 0, 1]])
+#Tsc_final = np.array([[0, 1, 0, 0],[-1, 0, 0, -1],[0, 0, 1, 0.025],[0, 0, 0, 1]])
+#
+#Tce_grasp = Tsc_init
+#Tse_init = np.array([[1, 0, 0, 0],[0, 1, 0, 0],[0, 0, 1, 0.5],[0, 0, 0, 1]])
+#varphi = -3./4.*np.pi
+#Tce_standoff = np.array([[np.cos(varphi), 0, -np.sin(varphi), 1],[0, 1, 0, 0],[np.sin(varphi), 0, np.cos(varphi), 0.125],[0, 0, 0, 1]])
+#Tce_grasp = Tce_standoff.copy()
+#Tce_grasp[0:3,3] = Tsc_init[0:3,3]
+#
+#Trajectory = trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff, 100)
+#np.savetxt('test.csv', Trajectory, delimiter=', ')
+
 
 #Tsb = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
 #Tb0 = np.array([[1, 0, 0, 0.1662],[0, 1, 0, 0],[0, 0, 1, 0.0026],[0, 0, 0, 1]])
 #Tse_init = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
 #Tse_init = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
+
+X = np.array([
+    [0.170 , 0.0 , 0.985 , 0.387],
+    [0.0   , 1.0 , 0.0   , 0.0  ], 
+    [-0.985, 0.0 , 0.170 , 0.570],
+    [0.0   , 0.0 , 0.0   , 1.0  ]])
+Xd = np.array([
+    [0.0   , 0.0 , 1.0   , 0.5  ],
+    [0.0   , 1.0 , 0.0   , 0.0  ], 
+    [-1.0  , 0.0 , 0.0   , 0.5  ],
+    [0.0   , 0.0 , 0.0   , 1.0  ]])
+Xd_next = np.array([
+    [0.0   , 0.0 , 1.0   , 0.6  ],
+    [0.0   , 1.0 , 0.0   , 0.0  ], 
+    [-1.0  , 0.0 , 0.0   , 0.3  ],
+    [0.0   , 0.0 , 0.0   , 1.0  ]])
+Kp = np.zeros((4,4))
+Ki = np.zeros((4,4))
+dt = 0.01
+
+VdM = logm(np.matmul(np.linalg.inv(Xd),Xd_next))/dt
+Vd = np.array([VdM[1,2],VdM[0,2],VdM[0,1],VdM[0,3],VdM[1,3],VdM[2,3]])
+first = np.matmul(mr.Adjoint(np.matmul(np.linalg.inv(X),Xd)), Vd)
+X_errM = logm(np.matmul(np.linalg.inv(X),Xd))
+X_err = np.array([X_errM[1,2],X_errM[0,2],X_errM[0,1],X_errM[0,3],X_errM[1,3],X_errM[2,3]])
+
+# calc forward kinematics to get Jacobian
+M = [[1,0,0,3.732],[0,1,0,0],[0,0,1,2.732],[0,0,0,1]]
+B = [[0,0,0,0,0,0],
+ [0,1,1,1,0,0],
+ [1,0,0,0,0,1],
+ [0,2.73,3.73,2,0,0],
+ [2.73,0,0,0,0,0],
+ [0,-2.73,-1,0,1,0]]
+mr.FKinBody(M, B, [-np.pi/2, np.pi/2, np.pi/3, -np.pi/4, 1, np.pi/6])
