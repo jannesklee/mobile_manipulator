@@ -133,6 +133,9 @@ def test_joint_limits():
     #With these joint limits, you could write a function called testJointLimits to return a list of joint limits that are violated given the robot arm's configuration θ {\displaystyle \theta }. 
     pass
 
+def current_actual_endeffector(q,theta):
+    pass
+
 # input for trajectory generator
 #Tsc_init = np.array([[1, 0, 0, 1],[0, 1, 0, 0],[0, 0, 1, 0.025],[0, 0, 0, 1]])
 #Tsc_final = np.array([[0, 1, 0, 0],[-1, 0, 0, -1],[0, 0, 1, 0.025],[0, 0, 0, 1]])
@@ -148,10 +151,12 @@ def test_joint_limits():
 #np.savetxt('test.csv', Trajectory, delimiter=', ')
 
 
-#Tsb = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
-#Tb0 = np.array([[1, 0, 0, 0.1662],[0, 1, 0, 0],[0, 0, 1, 0.0026],[0, 0, 0, 1]])
+M0e = np.array([[1, 0, 0, 0.033],[0, 1, 0, 0],[0, 0, 1, 0.6546],[0, 0, 0, 1]])
+Tsb = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
+Tb0 = np.array([[1, 0, 0, 0.1662],[0, 1, 0, 0],[0, 0, 1, 0.0026],[0, 0, 0, 1]])
 #Tse_init = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
 #Tse_init = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
+
 
 X = np.array([
     [0.170 , 0.0 , 0.985 , 0.387],
@@ -178,12 +183,13 @@ first = np.matmul(mr.Adjoint(np.matmul(np.linalg.inv(X),Xd)), Vd)
 X_errM = logm(np.matmul(np.linalg.inv(X),Xd))
 X_err = np.array([X_errM[1,2],X_errM[0,2],X_errM[0,1],X_errM[0,3],X_errM[1,3],X_errM[2,3]])
 
+print(X_err)
+
 # calc forward kinematics to get Jacobian
-M = [[1,0,0,3.732],[0,1,0,0],[0,0,1,2.732],[0,0,0,1]]
-B = [[0,0,0,0,0,0],
- [0,1,1,1,0,0],
- [1,0,0,0,0,1],
- [0,2.73,3.73,2,0,0],
- [2.73,0,0,0,0,0],
- [0,-2.73,-1,0,1,0]]
-mr.FKinBody(M, B, [-np.pi/2, np.pi/2, np.pi/3, -np.pi/4, 1, np.pi/6])
+B =  np.array([
+    [0.0 , 0.0 , 1.0, 0.0    , 0.033, 0.0],        
+    [0.0 , -1.0, 0.0, -0.5076, 0.0  , 0.0],     
+    [0.0 , -1.0, 0.0, -0.3526, 0.0  , 0.0],     
+    [0.0 , -1.0, 0.0, -0.2176, 0.0  , 0.0],     
+    [0.0 , 0.0 , 1.0, 0.0    , 0.0  , 0.0]])
+X = np.matmul(np.matmul(Tsb,Tb0), mr.FKinBody(M,B, joints))
