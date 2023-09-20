@@ -1,5 +1,7 @@
 import numpy as np
 from scipy.linalg import logm
+import sys
+sys.path.append('/home/jklee/src/ModernRobotics/packages/Python/')
 import modern_robotics as mr
 
 def next_state(state, speeds, dt, speedlimits):
@@ -152,6 +154,9 @@ def current_actual_endeffector(q,theta):
 
 
 M0e = np.array([[1, 0, 0, 0.033],[0, 1, 0, 0],[0, 0, 1, 0.6546],[0, 0, 0, 1]])
+x = 0.0
+y = 0.0
+varphi = 0.0
 Tsb = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
 Tb0 = np.array([[1, 0, 0, 0.1662],[0, 1, 0, 0],[0, 0, 1, 0.0026],[0, 0, 0, 1]])
 #Tse_init = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
@@ -183,13 +188,38 @@ first = np.matmul(mr.Adjoint(np.matmul(np.linalg.inv(X),Xd)), Vd)
 X_errM = logm(np.matmul(np.linalg.inv(X),Xd))
 X_err = np.array([X_errM[1,2],X_errM[0,2],X_errM[0,1],X_errM[0,3],X_errM[1,3],X_errM[2,3]])
 
-print(X_err)
+#print(X_err)
 
 # calc forward kinematics to get Jacobian
 B =  np.array([
     [0.0 , 0.0 , 1.0, 0.0    , 0.033, 0.0],        
     [0.0 , -1.0, 0.0, -0.5076, 0.0  , 0.0],     
-    [0.0 , -1.0, 0.0, -0.3526, 0.0  , 0.0],     
-    [0.0 , -1.0, 0.0, -0.2176, 0.0  , 0.0],     
-    [0.0 , 0.0 , 1.0, 0.0    , 0.0  , 0.0]])
-X = np.matmul(np.matmul(Tsb,Tb0), mr.FKinBody(M,B, joints))
+    [0.0 , -1.0, 0. , -0.3526, 0.0  , 0.00],     
+    [0.0 , -1.0, 0. , -0.2176, 0.0  , 0.00],     
+    [0.0 , 0.0 , 1. , 0.0    , 0.0  , 0.00]]).T
+thetalist = np.array([[0.0,0.0,0.2,-1.6,0.]]).T
+T0e = mr.FKinBody(M0e, B, thetalist)
+Xqtheta = np.matmul(np.matmul(Tsb,Tb0), T0e)
+# calculate Jarm
+Jarm = mr.JacobianBody(B, thetalist)
+
+# calculate Jbase
+l = 0.47*0.5
+w = 0.3*0.5
+r = 0.0475
+F = 0.25*r*np.array([
+    [-1./(l+w), 1./(l+w), 1./(l+w), -1./(l+w)],
+    [1        , 1       , 1       , 1        ],
+    [-1       , 1       , -1      , 1        ]
+])
+
+Adj = mr.Adjoint(np.matmul(np.linalg.inv(T0e), np.linalg.inv(Tb0)))
+F6 = np.vstack([np.zeros(4),np.zeros(4),F,np.zeros(4)])
+Jbase = np.matmul(Adj,F6)
+
+Je = np.hstack([Jbase, Jarm])
+#print(Je)
+
+V = np.array([0.,0.,0.,21.409,0.,6.455])
+print(np.matmul(np.linalg.pinv(Je),V.T))
+ 
