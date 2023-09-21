@@ -122,14 +122,45 @@ def trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff,
     return Trajectory
 
 def feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt):
+    VdM = logm(np.matmul(np.linalg.inv(Tse_d),Tse_d_next))/dt
+    Vd = np.array([VdM[1,2],VdM[0,2],VdM[0,1],VdM[0,3],VdM[1,3],VdM[2,3]])
+    first = np.matmul(mr.Adjoint(np.matmul(np.linalg.inv(X),Tse_d)), Vd)
+    X_errM = logm(np.matmul(np.linalg.inv(X),Tse_d))
+    X_err = np.array([X_errM[1,2],X_errM[0,2],X_errM[0,1],X_errM[0,3],X_errM[1,3],X_errM[2,3]])
 
-    Vd = mr.MatrixLog6(np.linalg.inv(Tse_d), Ts_d_next)
-    X_err = mr.MatrixLog6(np.matmul(np.linalg.inv(X),X))
+    # feedforward
+    B =  np.array([
+        [0.0 , 0.0 , 1.0, 0.0    , 0.033, 0.0],        
+        [0.0 , -1.0, 0.0, -0.5076, 0.0  , 0.0],     
+        [0.0 , -1.0, 0. , -0.3526, 0.0  , 0.00],     
+        [0.0 , -1.0, 0. , -0.2176, 0.0  , 0.00],     
+        [0.0 , 0.0 , 1. , 0.0    , 0.0  , 0.00]]).T
+    thetalist = np.array([[0.0,0.0,0.2,-1.6,0.]]).T
+    T0e = mr.FKinBody(M0e, B, thetalist)
+    Xqtheta = np.matmul(np.matmul(Tsb,Tb0), T0e)
+    # calculate Jarm
+    Jarm = mr.JacobianBody(B, thetalist)
 
-    np.matmul(mr.Adjoint(np.matmul(np.linalg.inv(Tse), Tse_d)), Vd) + \
-        np.matmul(Kp,Xerr) + np.matmul(Ki, Xerr)*dt
+    # calculate Jbase
+    l = 0.47*0.5
+    w = 0.3*0.5
+    r = 0.0475
+    F = 0.25*r*np.array([
+        [-1./(l+w), 1./(l+w), 1./(l+w), -1./(l+w)],
+        [1        , 1       , 1       , 1        ],
+        [-1       , 1       , -1      , 1        ]
+    ])
 
-    pass
+    Adj = mr.Adjoint(np.matmul(np.linalg.inv(T0e), np.linalg.inv(Tb0)))
+    F6 = np.vstack([np.zeros(4),np.zeros(4),F,np.zeros(4)])
+    Jbase = np.matmul(Adj,F6)
+
+    # combine in one jacobian
+    Je = np.hstack([Jbase, Jarm])
+
+    V = np.array([0.,0.,0.,21.409,0.,6.455])
+    u_and_theta_dot = np.matmul(np.linalg.pinv(Je),V.T)
+    return u_and_theta_dot[:3], u_and_theta_dot[3:]
 
 def test_joint_limits():
     #With these joint limits, you could write a function called testJointLimits to return a list of joint limits that are violated given the robot arm's configuration θ {\displaystyle \theta }. 
@@ -161,6 +192,7 @@ Tsb = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(
 Tb0 = np.array([[1, 0, 0, 0.1662],[0, 1, 0, 0],[0, 0, 1, 0.0026],[0, 0, 0, 1]])
 #Tse_init = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
 #Tse_init = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
+#Tse current end eeffecot
 
 
 X = np.array([
@@ -182,44 +214,6 @@ Kp = np.zeros((4,4))
 Ki = np.zeros((4,4))
 dt = 0.01
 
-VdM = logm(np.matmul(np.linalg.inv(Xd),Xd_next))/dt
-Vd = np.array([VdM[1,2],VdM[0,2],VdM[0,1],VdM[0,3],VdM[1,3],VdM[2,3]])
-first = np.matmul(mr.Adjoint(np.matmul(np.linalg.inv(X),Xd)), Vd)
-X_errM = logm(np.matmul(np.linalg.inv(X),Xd))
-X_err = np.array([X_errM[1,2],X_errM[0,2],X_errM[0,1],X_errM[0,3],X_errM[1,3],X_errM[2,3]])
+(u, theta_dot) = feedback_control(X, Xd, Xd_next, Kp, Ki, dt)
 
-#print(X_err)
-
-# calc forward kinematics to get Jacobian
-B =  np.array([
-    [0.0 , 0.0 , 1.0, 0.0    , 0.033, 0.0],        
-    [0.0 , -1.0, 0.0, -0.5076, 0.0  , 0.0],     
-    [0.0 , -1.0, 0. , -0.3526, 0.0  , 0.00],     
-    [0.0 , -1.0, 0. , -0.2176, 0.0  , 0.00],     
-    [0.0 , 0.0 , 1. , 0.0    , 0.0  , 0.00]]).T
-thetalist = np.array([[0.0,0.0,0.2,-1.6,0.]]).T
-T0e = mr.FKinBody(M0e, B, thetalist)
-Xqtheta = np.matmul(np.matmul(Tsb,Tb0), T0e)
-# calculate Jarm
-Jarm = mr.JacobianBody(B, thetalist)
-
-# calculate Jbase
-l = 0.47*0.5
-w = 0.3*0.5
-r = 0.0475
-F = 0.25*r*np.array([
-    [-1./(l+w), 1./(l+w), 1./(l+w), -1./(l+w)],
-    [1        , 1       , 1       , 1        ],
-    [-1       , 1       , -1      , 1        ]
-])
-
-Adj = mr.Adjoint(np.matmul(np.linalg.inv(T0e), np.linalg.inv(Tb0)))
-F6 = np.vstack([np.zeros(4),np.zeros(4),F,np.zeros(4)])
-Jbase = np.matmul(Adj,F6)
-
-Je = np.hstack([Jbase, Jarm])
-#print(Je)
-
-V = np.array([0.,0.,0.,21.409,0.,6.455])
-print(np.matmul(np.linalg.pinv(Je),V.T))
- 
+print(u, theta_dot)
