@@ -124,20 +124,13 @@ def trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff,
 def feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt):
     VdM = logm(np.matmul(np.linalg.inv(Tse_d),Tse_d_next))/dt
     Vd = np.array([VdM[1,2],VdM[0,2],VdM[0,1],VdM[0,3],VdM[1,3],VdM[2,3]])
-    first = np.matmul(mr.Adjoint(np.matmul(np.linalg.inv(X),Tse_d)), Vd)
     X_errM = logm(np.matmul(np.linalg.inv(X),Tse_d))
     X_err = np.array([X_errM[1,2],X_errM[0,2],X_errM[0,1],X_errM[0,3],X_errM[1,3],X_errM[2,3]])
+    print(X_err)
+    V = np.matmul(mr.Adjoint(np.matmul(np.linalg.inv(X), Tse_d)), Vd) + np.matmul(Kp,X_err) + np.matmul(Ki,X_err)*dt
 
     # feedforward
-    B =  np.array([
-        [0.0 , 0.0 , 1.0, 0.0    , 0.033, 0.0],        
-        [0.0 , -1.0, 0.0, -0.5076, 0.0  , 0.0],     
-        [0.0 , -1.0, 0. , -0.3526, 0.0  , 0.00],     
-        [0.0 , -1.0, 0. , -0.2176, 0.0  , 0.00],     
-        [0.0 , 0.0 , 1. , 0.0    , 0.0  , 0.00]]).T
-    thetalist = np.array([[0.0,0.0,0.2,-1.6,0.]]).T
-    T0e = mr.FKinBody(M0e, B, thetalist)
-    Xqtheta = np.matmul(np.matmul(Tsb,Tb0), T0e)
+    Xqtheta = np.matmul(np.matmul(Tsb,Tb0), X)
     # calculate Jarm
     Jarm = mr.JacobianBody(B, thetalist)
 
@@ -151,16 +144,16 @@ def feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt):
         [-1       , 1       , -1      , 1        ]
     ])
 
-    Adj = mr.Adjoint(np.matmul(np.linalg.inv(T0e), np.linalg.inv(Tb0)))
+    Adj = mr.Adjoint(np.matmul(np.linalg.inv(Tse), np.linalg.inv(Tb0)))
     F6 = np.vstack([np.zeros(4),np.zeros(4),F,np.zeros(4)])
     Jbase = np.matmul(Adj,F6)
 
     # combine in one jacobian
     Je = np.hstack([Jbase, Jarm])
 
-    V = np.array([0.,0.,0.,21.409,0.,6.455])
-    u_and_theta_dot = np.matmul(np.linalg.pinv(Je),V.T)
-    return u_and_theta_dot[:3], u_and_theta_dot[3:]
+    #V = np.array([0.,0.,0.,21.409,0.,6.455])
+    u_and_theta_dot = np.matmul(np.linalg.pinv(Je),V)
+    return u_and_theta_dot
 
 def test_joint_limits():
     #With these joint limits, you could write a function called testJointLimits to return a list of joint limits that are violated given the robot arm's configuration θ {\displaystyle \theta }. 
@@ -184,22 +177,32 @@ def current_actual_endeffector(q,theta):
 #np.savetxt('test.csv', Trajectory, delimiter=', ')
 
 
-M0e = np.array([[1, 0, 0, 0.033],[0, 1, 0, 0],[0, 0, 1, 0.6546],[0, 0, 0, 1]])
+
 x = 0.0
 y = 0.0
 varphi = 0.0
-Tsb = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
-Tb0 = np.array([[1, 0, 0, 0.1662],[0, 1, 0, 0],[0, 0, 1, 0.0026],[0, 0, 0, 1]])
-#Tse_init = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
-#Tse_init = np.array([[np.cos(varphi), -np.sin(varphi), 0, x],[np.sin(varphi), np.cos(varphi), 0, y],[0, 0, 1, 0.0963],[0, 0, 0, 1]])
-#Tse current end eeffecot
+Tsb = np.array([[np.cos(varphi), -np.sin(varphi), 0., x],[np.sin(varphi), np.cos(varphi), 0., y],[0., 0., 1, 0.0963],[0., 0., 0., 1.]])
+Tb0 = np.array([[1, 0., 0., 0.1662],[0., 1, 0., 0.],[0., 0., 1, 0.0026],[0., 0., 0., 1]])
 
+M0e = np.array([
+    [1., 0., 0., 0.033],
+    [0., 1., 0., 0.],
+    [0., 0., 1., 0.6546],
+    [0., 0., 0., 1.]])
+B =  np.array([
+    [0.0 , 0.0 , 1.0, 0.0    , 0.033, 0.0],        
+    [0.0 , -1.0, 0.0, -0.5076, 0.0  , 0.0],     
+    [0.0 , -1.0, 0. , -0.3526, 0.0  , 0.00],     
+    [0.0 , -1.0, 0. , -0.2176, 0.0  , 0.00],     
+    [0.0 , 0.0 , 1. , 0.0    , 0.0  , 0.00]]).T
+thetalist = np.array([[0.0,0.0,0.2,-1.6,0.]]).T
+X = mr.FKinBody(M0e, B, thetalist)
 
-X = np.array([
-    [0.170 , 0.0 , 0.985 , 0.387],
-    [0.0   , 1.0 , 0.0   , 0.0  ], 
-    [-0.985, 0.0 , 0.170 , 0.570],
-    [0.0   , 0.0 , 0.0   , 1.0  ]])
+#X = np.array([
+#    [0.170 , 0.0 , 0.985 , 0.387],
+#    [0.0   , 1.0 , 0.0   , 0.0  ], 
+#    [-0.985, 0.0 , 0.170 , 0.570],
+#    [0.0   , 0.0 , 0.0   , 1.0  ]])
 Xd = np.array([
     [0.0   , 0.0 , 1.0   , 0.5  ],
     [0.0   , 1.0 , 0.0   , 0.0  ], 
@@ -210,10 +213,11 @@ Xd_next = np.array([
     [0.0   , 1.0 , 0.0   , 0.0  ], 
     [-1.0  , 0.0 , 0.0   , 0.3  ],
     [0.0   , 0.0 , 0.0   , 1.0  ]])
-Kp = np.zeros((4,4))
-Ki = np.zeros((4,4))
+Kp = np.zeros((6,6))
+#Kp = np.identity(6)
+Ki = np.zeros((6,6))
 dt = 0.01
 
-(u, theta_dot) = feedback_control(X, Xd, Xd_next, Kp, Ki, dt)
+utheta = feedback_control(X, Xd, Xd_next, Kp, Ki, dt)
 
-print(u, theta_dot)
+print(utheta)
