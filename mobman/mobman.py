@@ -53,6 +53,16 @@ def flatten_output(TrajectoryIn, gripper):
 
     return Trajectory
 
+def array_output(FlatTrajectory):
+    gripper = FlatTrajectory[12]
+    traj =  np.identity(4)
+    traj[0:3,0:3] = np.reshape(FlatTrajectory[0:9], (3,3))
+    traj[0:3,3] = FlatTrajectory[9:12]
+
+    return traj, gripper
+
+
+
 def trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff, k):
     """
     Input
@@ -65,50 +75,62 @@ def trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff,
     """
 
     # likely use ScrewTrajectory or CartesianTrajectory
-    Tf = k
     method = 5 # cubic time scaling
 
     # A trajectory to move the gripper from its initial configuration to a "standoff" configuration a few cm above the block.
-    InitialToStandoff = np.array(mr.ScrewTrajectory(Tse_init, Tce_standoff, Tf, k, method))
+    tf1 = 10 # 10s
+    N = tf1*100*k
+    InitialToStandoff = np.array(mr.ScrewTrajectory(Tse_init, Tce_standoff, tf1, N, method))
     InitialToStandoffFlat = flatten_output(InitialToStandoff, 0.)
-    # A trajectory to move the gripper down to the grasp position.
-    StandoffToGrasp = np.array(mr.ScrewTrajectory(Tce_standoff, Tce_grasp, Tf, k, method))
+    # A trajectory to move the gripper down to the grasp position. -> 4s
+    tf2 = 4 # 4s
+    N = tf2*100*k
+    StandoffToGrasp = np.array(mr.ScrewTrajectory(Tce_standoff, Tce_grasp, tf2, N, method))
     StandoffToGraspFlat = flatten_output(StandoffToGrasp, 0.)
 
-    # Closing of the gripper
-    GripperSteps = 50
+    # Closing of the gripper -> 1s
+    GripperSteps = 100*k # =s
     CloseGripperFlat = np.zeros((GripperSteps,13))
     for i, gripper in enumerate(np.linspace(0,1,GripperSteps)):
         CloseGripperFlat[i,:] = StandoffToGraspFlat[-1,:]
         CloseGripperFlat[i,12] = gripper
 
-    # A trajectory to move the gripper back up to the "standoff" configuration.
-    GraspToStandoff = np.array(mr.ScrewTrajectory(Tce_grasp, Tce_standoff, Tf, k, method))
+    # A trajectory to move the gripper back up to the "standoff" configuration. -> 4s
+    tf3 = 4 # 4s
+    N = tf3*100*k
+    GraspToStandoff = np.array(mr.ScrewTrajectory(Tce_grasp, Tce_standoff, tf3, N, method))
     GraspToStandoffFlat = flatten_output(GraspToStandoff,1.)
 
     # A trajectory to move the gripper to a "standoff" configuration above the final configuration.
-    # get same relative position as at the first standoff
+    # get same relative position as at the first standoff -> 10s
     Tsc_rel = np.matmul(np.linalg.inv(Tsc_init), Tce_standoff)
     Tce_finalstandoff = np.matmul(Tsc_final,Tsc_rel)
-    StandoffToStandoff = np.array(mr.ScrewTrajectory(Tce_standoff, Tce_finalstandoff, Tf, k, method))
+    tf4 = 10 # 4s
+    N = tf4*100*k
+    StandoffToStandoff = np.array(mr.ScrewTrajectory(Tce_standoff, Tce_finalstandoff, tf4, N, method))
     StandoffToStandoffFlat = flatten_output(StandoffToStandoff, 1.)
 
-    #A trajectory to move the gripper to the final configuration of the object.
+    #A trajectory to move the gripper to the final configuration of the object. -> 4s
     Tsgrasp_rel = np.matmul(np.linalg.inv(Tsc_init), Tce_grasp)
     Tce_finalgrasp = np.matmul(Tsc_final,Tsgrasp_rel)
-    StandoffToGraspFinal = np.array(mr.ScrewTrajectory(Tce_finalstandoff, Tce_finalgrasp, Tf, k, method))
+    tf5 = 4
+    N = tf5*100*k
+    StandoffToGraspFinal = np.array(mr.ScrewTrajectory(Tce_finalstandoff, Tce_finalgrasp, tf5, N, method))
     StandoffToGraspFinalFlat = flatten_output(StandoffToGraspFinal, 1.)
 
-    # Opening of the gripper
+    # Opening of the gripper -> 1s
     OpenGripperFlat = np.zeros((GripperSteps,13))
     for i, gripper in enumerate(np.linspace(1,0,GripperSteps)):
         OpenGripperFlat[i,:] = StandoffToGraspFinalFlat[-1,:]
         OpenGripperFlat[i,12] = gripper
 
-    #A trajectory to move the gripper back to the "standoff" configuration.
-    StandoffToStandoffFinal = np.array(mr.ScrewTrajectory(Tce_finalgrasp, Tce_finalstandoff, Tf, k, method))
+    #A trajectory to move the gripper back to the "standoff" configuration. -> 4s
+    tf6 = 4
+    N = tf6*100*k
+    StandoffToStandoffFinal = np.array(mr.ScrewTrajectory(Tce_finalgrasp, Tce_finalstandoff, tf6, N, method))
     StandoffToStandoffFinalFlat = flatten_output(StandoffToStandoffFinal, 0.)
 
+    # whole trajectory -> 38s
     Trajectory = np.concatenate((
         InitialToStandoffFlat,
         StandoffToGraspFlat,
@@ -124,14 +146,29 @@ def trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff,
 def feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt):
     VdM = logm(np.matmul(np.linalg.inv(Tse_d),Tse_d_next))/dt
     Vd = np.array([VdM[1,2],VdM[0,2],VdM[0,1],VdM[0,3],VdM[1,3],VdM[2,3]])
-    X_errM = logm(np.matmul(np.linalg.inv(X),Tse_d))
+    X_errM = logm(np.matmul(np.linalg.inv(Tse),Tse_d))
     X_err = np.array([X_errM[1,2],X_errM[0,2],X_errM[0,1],X_errM[0,3],X_errM[1,3],X_errM[2,3]])
-    print(X_err)
-    V = np.matmul(mr.Adjoint(np.matmul(np.linalg.inv(X), Tse_d)), Vd) + np.matmul(Kp,X_err) + np.matmul(Ki,X_err)*dt
+    V = np.matmul(mr.Adjoint(np.matmul(np.linalg.inv(Tse), Tse_d)), Vd) + np.matmul(Kp,X_err) + np.matmul(Ki,X_err)*dt
+
+    return V, X_err
+
+def get_speeds(V, state):
+    x = state[0]
+    y = state[1]
+    varphi = state[2]
 
     # feedforward
-    Xqtheta = np.matmul(np.matmul(Tsb,Tb0), X)
+    Tsb = np.array([[np.cos(varphi), -np.sin(varphi), 0., x],[np.sin(varphi), np.cos(varphi), 0., y],[0., 0., 1, 0.0963],[0., 0., 0., 1.]])
+    Tb0 = np.array([[1, 0., 0., 0.1662],[0., 1, 0., 0.],[0., 0., 1, 0.0026],[0., 0., 0., 1]])
+
     # calculate Jarm
+    B =  np.array([
+        [0.0 , 0.0 , 1.0, 0.0    , 0.033, 0.0],        
+        [0.0 , -1.0, 0.0, -0.5076, 0.0  , 0.0],     
+        [0.0 , -1.0, 0. , -0.3526, 0.0  , 0.00],     
+        [0.0 , -1.0, 0. , -0.2176, 0.0  , 0.00],     
+        [0.0 , 0.0 , 1. , 0.0    , 0.0  , 0.00]]).T
+    thetalist = np.array(state[3:3+5]).T
     Jarm = mr.JacobianBody(B, thetalist)
 
     # calculate Jbase
@@ -151,39 +188,86 @@ def feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt):
     # combine in one jacobian
     Je = np.hstack([Jbase, Jarm])
 
-    #V = np.array([0.,0.,0.,21.409,0.,6.455])
     u_and_theta_dot = np.matmul(np.linalg.pinv(Je),V)
+
     return u_and_theta_dot
 
-def test_joint_limits():
-    #With these joint limits, you could write a function called testJointLimits to return a list of joint limits that are violated given the robot arm's configuration θ {\displaystyle \theta }. 
-    pass
+def get_endeffector(state):
+    x = state[0]
+    y = state[1]
+    varphi = state[2]
 
-def current_actual_endeffector(q,theta):
-    pass
+    Tsb = np.array([[np.cos(varphi), -np.sin(varphi), 0., x],[np.sin(varphi), np.cos(varphi), 0., y],[0., 0., 1, 0.0963],[0., 0., 0., 1.]])
+    Tb0 = np.array([[1, 0., 0., 0.1662],[0., 1, 0., 0.],[0., 0., 1, 0.0026],[0., 0., 0., 1]])
+    M0e = np.array([
+        [1., 0., 0., 0.033],
+        [0., 1., 0., 0.],
+        [0., 0., 1., 0.6546],
+        [0., 0., 0., 1.]])
+    B =  np.array([
+        [0.0 , 0.0 , 1.0, 0.0    , 0.033, 0.0],        
+        [0.0 , -1.0, 0.0, -0.5076, 0.0  , 0.0],     
+        [0.0 , -1.0, 0. , -0.3526, 0.0  , 0.00],     
+        [0.0 , -1.0, 0. , -0.2176, 0.0  , 0.00],     
+        [0.0 , 0.0 , 1. , 0.0    , 0.0  , 0.00]]).T
+    thetalist = state[2:2+5]
+    X = mr.FKinBody(M0e, B, thetalist)
+    return X
 
 # input for trajectory generator
 #Tsc_init = np.array([[1, 0, 0, 1],[0, 1, 0, 0],[0, 0, 1, 0.025],[0, 0, 0, 1]])
 #Tsc_final = np.array([[0, 1, 0, 0],[-1, 0, 0, -1],[0, 0, 1, 0.025],[0, 0, 0, 1]])
-#
-#Tce_grasp = Tsc_init
-#Tse_init = np.array([[1, 0, 0, 0],[0, 1, 0, 0],[0, 0, 1, 0.5],[0, 0, 0, 1]])
-#varphi = -3./4.*np.pi
-#Tce_standoff = np.array([[np.cos(varphi), 0, -np.sin(varphi), 1],[0, 1, 0, 0],[np.sin(varphi), 0, np.cos(varphi), 0.125],[0, 0, 0, 1]])
+#Tse_init = np.array([[1, 0, 0, 0.033],[0, 1, 0, 0],[0, 0, 1, 0.6546],[0, 0, 0, 1]])
+#xi = -3./4.*np.pi # angle for putting down or grabbing cube
+#Tce_standoff = np.array([[np.cos(xi), 0, -np.sin(xi), 1],[0, 1, 0, 0],[np.sin(xi), 0, np.cos(xi), 0.125],[0, 0, 0, 1]])
 #Tce_grasp = Tce_standoff.copy()
 #Tce_grasp[0:3,3] = Tsc_init[0:3,3]
+#k = 1
 #
-#Trajectory = trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff, 100)
-#np.savetxt('test.csv', Trajectory, delimiter=', ')
+#Trajectory = trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff, k)
+#np.savetxt('trajectory.csv', Trajectory, delimiter=', ')
+#
+###### configuration calculated feedback
+#state = np.array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+## calc dt from k
+#dt = 0.01
+#Kp = np.zeros((6,6))
+##Kp = np.identity(6)
+#Ki = np.zeros((6,6))
+#speedlimits = 100.0
+#
+## initial start of end-effector (normally not true)
+#(Tse, _) = array_output(Trajectory[0,:])
+#
+## iterate over trajectory
+#state_save = [state]
+#Xerr_save = []
+#for i in range(np.shape(Trajectory)[0]-1):
+#    (Tse_d, gripper) = array_output(Trajectory[i,:])
+#    (Tse_d_next, _) = array_output(Trajectory[i+1,:])
+#
+#    V, Xerr = feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt)
+#    uthetatdot = get_speeds(V, state)
+#    
+#    state = next_state(state, uthetatdot, dt, speedlimits)
+#    Tse = get_endeffector(state) # real new position
+#    
+#
+#    if (i % k) == 0:
+#        state_save.append(np.hstack((state, gripper)))
+#        Xerr_save.append(Xerr)
+#        pass
+#
+#np.savetxt('states.csv', np.array(state_save), delimiter=', ')
+#np.savetxt('Xerr.csv', np.array(Xerr_save), delimiter=', ')
 
 
-
+# make a test of this
 x = 0.0
 y = 0.0
 varphi = 0.0
 Tsb = np.array([[np.cos(varphi), -np.sin(varphi), 0., x],[np.sin(varphi), np.cos(varphi), 0., y],[0., 0., 1, 0.0963],[0., 0., 0., 1.]])
 Tb0 = np.array([[1, 0., 0., 0.1662],[0., 1, 0., 0.],[0., 0., 1, 0.0026],[0., 0., 0., 1]])
-
 M0e = np.array([
     [1., 0., 0., 0.033],
     [0., 1., 0., 0.],
@@ -195,15 +279,16 @@ B =  np.array([
     [0.0 , -1.0, 0. , -0.3526, 0.0  , 0.00],     
     [0.0 , -1.0, 0. , -0.2176, 0.0  , 0.00],     
     [0.0 , 0.0 , 1. , 0.0    , 0.0  , 0.00]]).T
-thetalist = np.array([[0.0,0.0,0.2,-1.6,0.]]).T
+thetalist = np.array([0.0,0.0,0.2,-1.6,0.])
 X = mr.FKinBody(M0e, B, thetalist)
+state = np.hstack((np.array([x,y,varphi]).T,thetalist,np.array([0.,0.,0.,0.]).T))
 
 #X = np.array([
-#    [0.170 , 0.0 , 0.985 , 0.387],
+#    [0.170   , 0.0 , 0.985   , 0.387  ],
 #    [0.0   , 1.0 , 0.0   , 0.0  ], 
-#    [-0.985, 0.0 , 0.170 , 0.570],
+#    [-0.985  , 0.0 , 0.17   , 0.57  ],
 #    [0.0   , 0.0 , 0.0   , 1.0  ]])
-Xd = np.array([
+d = np.array([
     [0.0   , 0.0 , 1.0   , 0.5  ],
     [0.0   , 1.0 , 0.0   , 0.0  ], 
     [-1.0  , 0.0 , 0.0   , 0.5  ],
@@ -218,6 +303,8 @@ Kp = np.zeros((6,6))
 Ki = np.zeros((6,6))
 dt = 0.01
 
-utheta = feedback_control(X, Xd, Xd_next, Kp, Ki, dt)
-
-print(utheta)
+(V, Xerr) = feedback_control(X, Xd, Xd_next, Kp, Ki, dt)
+print(V)
+print(Xerr)
+u = get_speeds(V, state)
+print(u)
