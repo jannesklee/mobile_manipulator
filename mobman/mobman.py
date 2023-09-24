@@ -244,16 +244,17 @@ speedlimits = 100.0
 print(Tse)
 
 # iterate over trajectory
-state_save = [state]
+state_save = []
 Xerr_save = []
 for i in range(np.shape(Trajectory)[0]-1):
     (Tse_d, gripper) = array_output(Trajectory[i,:])
     (Tse_d_next, _) = array_output(Trajectory[i+1,:])
 
     V, Xerr = feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt)
-    uthetatdot = get_speeds(V, Tse, state)
+    uthetadot = get_speeds(V, Tse, state)
+    print(uthetadot)
     
-    state = next_state(state, uthetatdot, dt, speedlimits)
+    state = next_state(state, uthetadot, dt, speedlimits)
     Tse = get_endeffector(state) # real new position
     
 
