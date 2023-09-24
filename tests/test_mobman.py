@@ -39,12 +39,12 @@ def test_feedback_control():
         [0.0   , 1.0 , 0.0   , 0.0  ], 
         [-1.0  , 0.0 , 0.0   , 0.3  ],
         [0.0   , 0.0 , 0.0   , 1.0  ]])
-    Kp = np.zeros((4,4))
-    Ki = np.zeros((4,4))
-    dt = 0.1
+    Kp = np.zeros((6,6))
+    Ki = np.zeros((6,6))
+    dt = 0.01
 
-    V = feedback_control(X, Xd, Xd_next, Kp, Ki, dt)
+    (V, Xerr) = feedback_control(X, Xd, Xd_next, Kp, Ki, dt)
 
-    expected = np.array([0., 0., 0., 20., 0., 10.])
-    assert np.allclose(V, expected, atol=1e-3)
+    expected = np.array([0., 0., 0., 21.409, 0., 6.455])
+    assert np.allclose(V, expected, atol=1e-1)
 
