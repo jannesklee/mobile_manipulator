@@ -154,6 +154,7 @@ def get_speeds(V, state):
     (_, T0e) = get_endeffector(state)
     Adj = mr.Adjoint(np.matmul(mr.TransInv(T0e), mr.TransInv(Tb0)))
     F6 = np.vstack([np.zeros(4),np.zeros(4),F,np.zeros(4)])
+
     Jbase = np.matmul(Adj,F6)
 
     # combine in one jacobian
@@ -197,10 +198,8 @@ def get_endeffector(state):
         [0., 0., 0., 1.]])
     thetalist = state[3:3+5]
     T0e = mr.FKinBody(M0e, get_B(), thetalist)
-
     X = np.matmul(np.matmul(Tsb,Tb0),T0e)
     return X, T0e
-
 
 def main():
     # input for trajectory generator
@@ -240,9 +239,10 @@ def main():
 
         V, Xerr = feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt)
         if i==1000:
-            print(V)
+            #print(V)
+            pass
         if i>1900:
-            print(V)
+            #print(V)
             pass
         (uthetadot, Je) = get_speeds(V, state)
 
