@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.linalg import logm, pinv
+from scipy.linalg import logm, pinv, inv
 import sys
 sys.path.append('/home/jklee/src/ModernRobotics/packages/Python/')
 import modern_robotics as mr
@@ -27,13 +27,13 @@ def next_state(state, speeds, dt, speedlimits):
     ])
     Vb = np.matmul(F,dt*wheel_speeds)
 
-    if Vb[0] == 0:
+    if Vb[0] <= 1e-4:
         dq_b = np.array([0, Vb[1], Vb[2]]).T
     else:
         dq_b = np.array([
             Vb[0], 
-            Vb[1]*np.sin(Vb[0])+Vb[2]*(np.cos(Vb[0]-1))/Vb[0],
-            Vb[2]*np.sin(Vb[0])+Vb[1]*(1-np.cos(Vb[0]))/Vb[0]]).T
+            (Vb[1]*np.sin(Vb[0])+Vb[2]*(np.cos(Vb[0]-1.)))/Vb[0],
+            (Vb[2]*np.sin(Vb[0])+Vb[1]*(1.-np.cos(Vb[0])))/Vb[0]]).T
 
     dq = np.matmul(np.array([
         [1, 0, 0], 
@@ -219,98 +219,95 @@ def get_endeffector(state):
     return X, T0e
 
 # input for trajectory generator
-#Tsc_init = np.array([[1, 0, 0, 1],[0, 1, 0, 0],[0, 0, 1, 0.025],[0, 0, 0, 1]])
-#Tsc_final = np.array([[0, 1, 0, 0],[-1, 0, 0, -1],[0, 0, 1, 0.025],[0, 0, 0, 1]])
-#Tse_init = np.array([[1, 0, 0, 0.033],[0, 1, 0, 0],[0, 0, 1, 0.6546],[0, 0, 0, 1]])
-#xi = -3./4.*np.pi # angle for putting down or grabbing cube
-#Tce_standoff = np.array([[np.cos(xi), 0, -np.sin(xi), 1],[0, 1, 0, 0],[np.sin(xi), 0, np.cos(xi), 0.125],[0, 0, 0, 1]])
-#Tce_grasp = Tce_standoff.copy()
-#Tce_grasp[0:3,3] = Tsc_init[0:3,3]
-#k = 1
-#
-#Trajectory = trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff, k)
-#np.savetxt('trajectory.csv', Trajectory, delimiter=', ')
-#
-###### configuration calculated feedback
-#state = np.array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
-## calc dt from k
-#dt = 0.01
-#Kp = np.zeros((6,6))
-##Kp = np.identity(6)
-#Ki = np.zeros((6,6))
-#speedlimits = 100.0
-#
-## initial start of end-effector (normally not true)
-#(Tse, _) = array_output(Trajectory[0,:])
-#
-##print(Tse)
-#
-## iterate over trajectory
-#state_save = []
-#Xerr_save = []
-#for i in range(np.shape(Trajectory)[0]-1):
-#    (Tse_d, gripper) = array_output(Trajectory[i,:])
-#    (Tse_d_next, _) = array_output(Trajectory[i+1,:])
-#
-#
-#    V, Xerr = feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt)
-#    (uthetadot, Je) = get_speeds(V, state)
-#    
-#    state = next_state(state, uthetadot, dt, speedlimits)
-#    (Tse, T0e) = get_endeffector(state) # real new position
-#    
-#
-#    if (i % k) == 0:
-#        state_save.append(np.hstack((state, gripper)))
-#        Xerr_save.append(Xerr)
-#        pass
-#
-#np.savetxt('states.csv', np.array(state_save), delimiter=', ')
-#np.savetxt('Xerr.csv', np.array(Xerr_save), delimiter=', ')
+Tsc_init = np.array([[1, 0, 0, 1],[0, 1, 0, 0],[0, 0, 1, 0.025],[0, 0, 0, 1]])
+Tsc_final = np.array([[0, 1, 0, 0],[-1, 0, 0, -1],[0, 0, 1, 0.025],[0, 0, 0, 1]])
+Tse_init = np.array([[1, 0, 0, 0.033],[0, 1, 0, 0],[0, 0, 1, 0.6546],[0, 0, 0, 1]])
+xi = -3./4.*np.pi # angle for putting down or grabbing cube
+Tce_standoff = np.array([[np.cos(xi), 0, -np.sin(xi), 1],[0, 1, 0, 0],[np.sin(xi), 0, np.cos(xi), 0.125],[0, 0, 0, 1]])
+Tce_grasp = Tce_standoff.copy()
+Tce_grasp[0:3,3] = Tsc_init[0:3,3]
+k = 1
+
+Trajectory = trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff, k)
+np.savetxt('trajectory.csv', Trajectory, delimiter=', ')
+
+##### configuration calculated feedback
+state = np.array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+# calc dt from k
+dt = 0.01
+Kp = np.zeros((6,6))
+#Kp = np.identity(6)
+Ki = np.zeros((6,6))
+speedlimits = 100.0
+
+# initial start of end-effector (normally not true)
+(Tse, _) = array_output(Trajectory[0,:])
+
+
+# iterate over trajectory
+state_save = []
+Xerr_save = []
+for i in range(np.shape(Trajectory)[0]-1):
+    (Tse_d, gripper) = array_output(Trajectory[i,:])
+    (Tse_d_next, _) = array_output(Trajectory[i+1,:])
+
+
+    V, Xerr = feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt)
+    (uthetadot, Je) = get_speeds(V, state)
+    
+    state = next_state(state, uthetadot, dt, speedlimits)
+    (Tse, T0e) = get_endeffector(state) # real new position
+    
+
+    if (i % k) == 0:
+        state_save.append(np.hstack((state, gripper)))
+        Xerr_save.append(Xerr)
+        pass
+
+np.savetxt('states.csv', np.real(np.array(state_save)), delimiter=', ')
+np.savetxt('Xerr.csv', np.real(np.array(Xerr_save)), delimiter=', ')
 
 
 # make a test of this
-x = 0.0
-y = 0.0
-varphi = 0.0
-thetalist = np.array([0.0,0.0,0.2,-1.6,0.])
-Tsb = np.array([[np.cos(varphi), -np.sin(varphi), 0., x],[np.sin(varphi), np.cos(varphi), 0., y],[0., 0., 1, 0.0963],[0., 0., 0., 1.]])
-Tb0 = np.array([[1, 0., 0., 0.1662],[0., 1, 0., 0.],[0., 0., 1, 0.0026],[0., 0., 0., 1]])
-M0e = np.array([
-    [1., 0., 0., 0.033],
-    [0., 1., 0., 0.],
-    [0., 0., 1., 0.6546],
-    [0., 0., 0., 1.]])
-B =  np.array([
-    [0.0 , 0.0 , 1.0, 0.0    , 0.033, 0.0],        
-    [0.0 , -1.0, 0.0, -0.5076, 0.0  , 0.0],     
-    [0.0 , -1.0, 0. , -0.3526, 0.0  , 0.00],     
-    [0.0 , -1.0, 0. , -0.2176, 0.0  , 0.00],     
-    [0.0 , 0.0 , 1. , 0.0    , 0.0  , 0.00]]).T
-X = mr.FKinBody(M0e, B, thetalist)
-state = np.hstack((np.array([varphi,x,y]).T,thetalist,np.array([0.,0.,0.,0.]).T))
-
+#x = 0.0
+#y = 0.0
+#varphi = 0.0
+#thetalist = np.array([0.0,0.0,0.2,-1.6,0.])
+#Tsb = np.array([[np.cos(varphi), -np.sin(varphi), 0., x],[np.sin(varphi), np.cos(varphi), 0., y],[0., 0., 1, 0.0963],[0., 0., 0., 1.]])
+#Tb0 = np.array([[1, 0., 0., 0.1662],[0., 1, 0., 0.],[0., 0., 1, 0.0026],[0., 0., 0., 1]])
+#M0e = np.array([
+#    [1., 0., 0., 0.033],
+#    [0., 1., 0., 0.],
+#    [0., 0., 1., 0.6546],
+#    [0., 0., 0., 1.]])
+#B =  np.array([
+#    [0.0 , 0.0 , 1.0, 0.0    , 0.033, 0.0],        
+#    [0.0 , -1.0, 0.0, -0.5076, 0.0  , 0.0],     
+#    [0.0 , -1.0, 0. , -0.3526, 0.0  , 0.00],     
+#    [0.0 , -1.0, 0. , -0.2176, 0.0  , 0.00],     
+#    [0.0 , 0.0 , 1. , 0.0    , 0.0  , 0.00]]).T
+#X = mr.FKinBody(M0e, B, thetalist)
+#state = np.hstack((np.array([varphi,x,y]).T,thetalist,np.array([0.,0.,0.,0.]).T))
+#
 #X = np.array([
 #    [0.170   , 0.0 , 0.985   , 0.387  ],
 #    [0.0   , 1.0 , 0.0   , 0.0  ], 
 #    [-0.985  , 0.0 , 0.17   , 0.57  ],
 #    [0.0   , 0.0 , 0.0   , 1.0  ]])
-Xd = np.array([
-    [0.0   , 0.0 , 1.0   , 0.5  ],
-    [0.0   , 1.0 , 0.0   , 0.0  ], 
-    [-1.0  , 0.0 , 0.0   , 0.5  ],
-    [0.0   , 0.0 , 0.0   , 1.0  ]])
-Xd_next = np.array([
-    [0.0   , 0.0 , 1.0   , 0.6  ],
-    [0.0   , 1.0 , 0.0   , 0.0  ], 
-    [-1.0  , 0.0 , 0.0   , 0.3  ],
-    [0.0   , 0.0 , 0.0   , 1.0  ]])
-#Kp = np.zeros((6,6))
-Kp = np.identity(6)
-Ki = np.zeros((6,6))
-dt = 0.01
-
-(V, Xerr) = feedback_control(X, Xd, Xd_next, Kp, Ki, dt)
-(u, Je) = get_speeds(V, state)
-print(V)
-print(u)
+#Xd = np.array([
+#    [0.0   , 0.0 , 1.0   , 0.5  ],
+#    [0.0   , 1.0 , 0.0   , 0.0  ], 
+#    [-1.0  , 0.0 , 0.0   , 0.5  ],
+#    [0.0   , 0.0 , 0.0   , 1.0  ]])
+#Xd_next = np.array([
+#    [0.0   , 0.0 , 1.0   , 0.6  ],
+#    [0.0   , 1.0 , 0.0   , 0.0  ], 
+#    [-1.0  , 0.0 , 0.0   , 0.3  ],
+#    [0.0   , 0.0 , 0.0   , 1.0  ]])
+##Kp = np.zeros((6,6))
+#Kp = np.identity(6)
+#Ki = np.zeros((6,6))
+#dt = 0.01
+#
+#(V, Xerr) = feedback_control(X, Xd, Xd_next, Kp, Ki, dt)
+#(u, Je) = get_speeds(V, state)
