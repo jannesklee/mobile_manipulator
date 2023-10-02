@@ -149,7 +149,6 @@ def feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt):
     X_errM = logm(np.matmul(np.linalg.inv(Tse),Tse_d))
     X_err = np.array([X_errM[1,2],X_errM[0,2],X_errM[0,1],X_errM[0,3],X_errM[1,3],X_errM[2,3]])
     AdXXd = mr.Adjoint(np.matmul(np.linalg.inv(Tse), Tse_d))
-    #AdX = np.array([AdXXd[1,2],AdXXd[0,2],AdXXd[0,1],AdXXd[0,3],AdXXd[1,3],AdXXd[2,3]])
     V = np.matmul(AdXXd, Vd) + np.matmul(Kp,X_err) + np.matmul(Ki,X_err)*dt
 
     return V, X_err
@@ -213,7 +212,7 @@ def get_endeffector(state):
         [0.0 , -1.0, 0. , -0.3526, 0.0  , 0.00],     
         [0.0 , -1.0, 0. , -0.2176, 0.0  , 0.00],     
         [0.0 , 0.0 , 1. , 0.0    , 0.0  , 0.00]]).T
-    thetalist = state[2:2+5]
+    thetalist = state[3:3+5]
     T0e = mr.FKinBody(M0e, B, thetalist)
 
     X = np.matmul(np.matmul(Tsb,Tb0),T0e)
