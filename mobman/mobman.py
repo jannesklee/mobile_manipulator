@@ -16,19 +16,10 @@ def next_state(state, speeds, dt, speedlimits):
     new_wheel_state = wheel_state + dt*wheel_speeds
 
     # odometry
-    l = 0.47*0.5
-    w = 0.3*0.5
-    r = 0.0475
+    Vb = np.matmul(get_F(),dt*wheel_speeds)
 
-    F = 0.25*r*np.array([
-        [-1./(l+w), 1./(l+w), 1./(l+w), -1./(l+w)],
-        [1        , 1       , 1       , 1        ],
-        [-1       , 1       , -1      , 1        ]
-    ])
-    Vb = np.matmul(F,dt*wheel_speeds)
-
-    if Vb[0] <= 1e-4:
-        dq_b = np.array([0, Vb[1], Vb[2]]).T
+    if Vb[0] <= 1e-5:
+        dq_b = np.array([Vb[0], Vb[1], Vb[2]]).T
     else:
         dq_b = np.array([
             Vb[0], 
@@ -38,7 +29,7 @@ def next_state(state, speeds, dt, speedlimits):
     dq = np.matmul(np.array([
         [1, 0, 0], 
         [0, np.cos(q[0]), -np.sin(q[0])],
-        [0, np.sin(q[0]), np.cos(q[0])]]), dq_b)
+        [0, np.sin(q[0]), np.cos(q[0])]]), dq_b).T
 
     new_chassis_state = q + dq
 
@@ -163,25 +154,12 @@ def get_speeds(V, state):
     Tb0 = np.array([[1, 0., 0., 0.1662],[0., 1, 0., 0.],[0., 0., 1, 0.0026],[0., 0., 0., 1]])
 
     # calculate Jarm
-    B =  np.array([
-        [0.0 , 0.0 , 1.0, 0.0    , 0.033, 0.0],        
-        [0.0 , -1.0, 0.0, -0.5076, 0.0  , 0.0],     
-        [0.0 , -1.0, 0. , -0.3526, 0.0  , 0.0],     
-        [0.0 , -1.0, 0. , -0.2176, 0.0  , 0.0],     
-        [0.0 , 0.0 , 1. , 0.0    , 0.0  , 0.0]]).T
-    thetalist = np.array(state[3:3+5]).T
+    B = get_B()
+    thetalist = np.array(state[3:3+5])
     Jarm = mr.JacobianBody(B, thetalist)
 
     # calculate Jbase
-    l = 0.47*0.5
-    w = 0.3*0.5
-    r = 0.0475
-    F = 0.25*r*np.array([
-        [-1./(l+w), 1./(l+w), 1./(l+w), -1./(l+w)],
-        [1        , 1       , 1       , 1        ],
-        [-1       , 1       , -1      , 1        ]
-    ])
-
+    F = get_F()
     (_, T0e) = get_endeffector(state)
     Adj = mr.Adjoint(np.matmul(np.linalg.inv(T0e), np.linalg.inv(Tb0)))
     F6 = np.vstack([np.zeros(4),np.zeros(4),F,np.zeros(4)])
@@ -193,6 +171,26 @@ def get_speeds(V, state):
     u_and_theta_dot = np.matmul(pinv(Je, atol=1e-4),V)
 
     return u_and_theta_dot, Je
+
+def get_B():
+    B = np.array([
+        [0.0 , 0.0 , 1.0, 0.0    , 0.033, 0.0],        
+        [0.0 , -1.0, 0.0, -0.5076, 0.0  , 0.0],     
+        [0.0 , -1.0, 0. , -0.3526, 0.0  , 0.0],     
+        [0.0 , -1.0, 0. , -0.2176, 0.0  , 0.0],     
+        [0.0 , 0.0 , 1. , 0.0    , 0.0  , 0.0]]).T
+    return B
+
+def get_F():
+    l = 0.47*0.5
+    w = 0.3*0.5
+    r = 0.0475
+    F = 0.25*r*np.array([
+        [-1./(l+w), 1./(l+w), 1./(l+w), -1./(l+w)],
+        [1        , 1       , 1       , 1        ],
+        [-1       , 1       , -1      , 1        ]
+    ])
+    return F
 
 def get_endeffector(state):
     varphi = state[0]
@@ -206,12 +204,7 @@ def get_endeffector(state):
         [0., 1., 0., 0.],
         [0., 0., 1., 0.6546],
         [0., 0., 0., 1.]])
-    B =  np.array([
-        [0.0 , 0.0 , 1.0, 0.0    , 0.033, 0.0],        
-        [0.0 , -1.0, 0.0, -0.5076, 0.0  , 0.0],     
-        [0.0 , -1.0, 0. , -0.3526, 0.0  , 0.00],     
-        [0.0 , -1.0, 0. , -0.2176, 0.0  , 0.00],     
-        [0.0 , 0.0 , 1. , 0.0    , 0.0  , 0.00]]).T
+    B = get_B()
     thetalist = state[3:3+5]
     T0e = mr.FKinBody(M0e, B, thetalist)
 
@@ -238,6 +231,7 @@ dt = 0.01
 Kp = np.zeros((6,6))
 #Kp = np.identity(6)
 Ki = np.zeros((6,6))
+#Ki = np.identity(6)
 speedlimits = 100.0
 
 # initial start of end-effector (normally not true)
@@ -250,7 +244,6 @@ Xerr_save = []
 for i in range(np.shape(Trajectory)[0]-1):
     (Tse_d, gripper) = array_output(Trajectory[i,:])
     (Tse_d_next, _) = array_output(Trajectory[i+1,:])
-
 
     V, Xerr = feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt)
     (uthetadot, Je) = get_speeds(V, state)
@@ -272,28 +265,20 @@ np.savetxt('Xerr.csv', np.real(np.array(Xerr_save)), delimiter=', ')
 #x = 0.0
 #y = 0.0
 #varphi = 0.0
-#thetalist = np.array([0.0,0.0,0.2,-1.6,0.])
+#thetalist = np.array([0.,0.,0.2,-1.6,0.])
+#state = np.hstack((np.array([varphi,x,y]).T,thetalist,np.array([0.,0.,0.,0.]).T))
+#
 #Tsb = np.array([[np.cos(varphi), -np.sin(varphi), 0., x],[np.sin(varphi), np.cos(varphi), 0., y],[0., 0., 1, 0.0963],[0., 0., 0., 1.]])
-#Tb0 = np.array([[1, 0., 0., 0.1662],[0., 1, 0., 0.],[0., 0., 1, 0.0026],[0., 0., 0., 1]])
+#Tb0 = np.array([[1., 0., 0., 0.1662],[0., 1., 0., 0.],[0., 0., 1., 0.0026],[0., 0., 0., 1.]])
 #M0e = np.array([
 #    [1., 0., 0., 0.033],
 #    [0., 1., 0., 0.],
 #    [0., 0., 1., 0.6546],
 #    [0., 0., 0., 1.]])
-#B =  np.array([
-#    [0.0 , 0.0 , 1.0, 0.0    , 0.033, 0.0],        
-#    [0.0 , -1.0, 0.0, -0.5076, 0.0  , 0.0],     
-#    [0.0 , -1.0, 0. , -0.3526, 0.0  , 0.00],     
-#    [0.0 , -1.0, 0. , -0.2176, 0.0  , 0.00],     
-#    [0.0 , 0.0 , 1. , 0.0    , 0.0  , 0.00]]).T
-#X = mr.FKinBody(M0e, B, thetalist)
-#state = np.hstack((np.array([varphi,x,y]).T,thetalist,np.array([0.,0.,0.,0.]).T))
+#B = get_B()
+#(_, T0e) = get_endeffector(state)
+#X = np.matmul(np.matmul(Tsb,Tb0),T0e)
 #
-#X = np.array([
-#    [0.170   , 0.0 , 0.985   , 0.387  ],
-#    [0.0   , 1.0 , 0.0   , 0.0  ], 
-#    [-0.985  , 0.0 , 0.17   , 0.57  ],
-#    [0.0   , 0.0 , 0.0   , 1.0  ]])
 #Xd = np.array([
 #    [0.0   , 0.0 , 1.0   , 0.5  ],
 #    [0.0   , 1.0 , 0.0   , 0.0  ], 
