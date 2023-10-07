@@ -13,6 +13,7 @@ def initial_state():
     (np.array([10., 10., 10., 10., 0., 0., 0., 0., 0.]), np.array([0, 0.475, 0])),
     (np.array([-10., 10., -10., 10., 0., 0., 0., 0., 0.]), np.array([0, 0, 0.475])),
     (np.array([-10., 10., 10., -10., 0., 0., 0., 0., 0.]), np.array([1.234, 0, 0])),
+    (np.array([0.5, 0.5, 0.5, 0.5, 0., 0., 0., 0., 0.]), np.array([0., 0.475e-1/2, 0])),
 ])
 def test_next_state(initial_state, speeds, expected):
     state = initial_state
@@ -114,3 +115,31 @@ def test_feedback_control():
     u_expected = np.array([157.5, 157.5, 157.5, 157.5, 0.0, -654.3, 1400.9, -746.8, 0.0])
     assert np.allclose(V, V_expected, atol=1e-3)
     assert np.allclose(u, u_expected, atol=1e-1)
+
+def test_rotation():
+    x = 0.0
+    y = 0.0
+    varphi = 0.0
+    thetalist = np.array([0.,0.,0.2,-1.6,0.])
+    state = np.hstack((np.array([varphi,x,y]).T,thetalist,np.array([0.,0.,0.,0.]).T))
+    dt = 0.01
+
+    varphi = 0.0
+    X = np.array([[np.cos(varphi), -np.sin(varphi), 0., x],[np.sin(varphi), np.cos(varphi), 0., y],[0., 0., 1, 0.0963],[0., 0., 0., 1.]])
+    Xd = np.array([[np.cos(varphi), -np.sin(varphi), 0., x],[np.sin(varphi), np.cos(varphi), 0., y],[0., 0., 1, 0.0963],[0., 0., 0., 1.]])
+    varphi = 1.234*dt
+    Xd_next = np.array([[np.cos(varphi), -np.sin(varphi), 0., x],[np.sin(varphi), np.cos(varphi), 0., y],[0., 0., 1, 0.0963],[0., 0., 0., 1.]])
+    Kp = np.zeros((6,6))
+    Ki = np.zeros((6,6))
+
+    (V, Xerr) = feedback_control(X, Xd, Xd_next, Kp, Ki, dt)
+    (u, Je) = get_speeds(V, state)
+    state = next_state(state, u, dt, 1e10)
+
+def test_flatten():
+    input_array = np.array([[[1,2,3,4],[5,6,7,8],[9,10,11,12],[0,0,0,1]]])
+
+    flat_array = flatten_output(input_array, 0.0)
+    (output_array, gripper) = array_output(flat_array[0,:])
+    assert(np.allclose(input_array, output_array, atol=1e-3))
+    
