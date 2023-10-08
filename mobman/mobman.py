@@ -19,7 +19,7 @@ def next_state(state, speeds, dt, speedlimit):
     # odometry
     Vb = np.matmul(get_F(), wheel_speeds)
 
-    if np.abs(Vb[0]) <= 1e-3:
+    if np.abs(Vb[0]) == 0.0:
         dq_b = np.array([0.0, Vb[1], Vb[2]])
     else:
         dq_b = np.array([
@@ -52,8 +52,6 @@ def array_output(FlatTrajectory):
     traj[0:3,3] = FlatTrajectory[9:12]
 
     return traj, gripper
-
-
 
 def trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff, k):
     # likely use ScrewTrajectory or CartesianTrajectory
@@ -197,9 +195,8 @@ def get_endeffector(state):
         [0., 1., 0., 0.],
         [0., 0., 1., 0.6546],
         [0., 0., 0., 1.]])
-    B = get_B()
     thetalist = state[3:3+5]
-    T0e = mr.FKinBody(M0e, B, thetalist)
+    T0e = mr.FKinBody(M0e, get_B(), thetalist)
 
     X = np.matmul(np.matmul(Tsb,Tb0),T0e)
     return X, T0e
@@ -211,7 +208,7 @@ def main():
     Tsc_final = np.array([[0, 1, 0, 0],[-1, 0, 0, -1],[0, 0, 1, 0.025],[0, 0, 0, 1]])
     #Tse_init = np.array([[1, 0, 0, 0.033],[0, 1, 0, 0],[0, 0, 1, 0.6546],[0, 0, 0, 1]])
     #Tse_init = np.array([[1, 0, 0, 0.2],[0, 1, 0, 0],[0, 0, 1, 0.7535],[0, 0, 0, 1]])
-    state = np.array([0., 0., 0., 0., 0.0, 0.01, 0.02, 0., 0., 0., 0., 0., 0.])
+    state = np.array([0., 0., 0., 0., 0.0, -0.01, -0.02, 0., 0., 0., 0., 0., 0.])
     (Tse_init, _) = get_endeffector(state)
     xi = -3./4.*np.pi # angle for putting down or grabbing cube
     Tce_standoff = np.array([[np.cos(xi), 0, -np.sin(xi), 1],[0, 1, 0, 0],[np.sin(xi), 0, np.cos(xi), 0.125],[0, 0, 0, 1]])
@@ -232,7 +229,7 @@ def main():
     speedlimit = 3.0
 
     # initial start of end-effector (normally not true)
-    (Tse, _) = array_output(Trajectory[0,:])
+    Tse = Tse_init
 
     # iterate over trajectory
     state_save = []
@@ -242,9 +239,16 @@ def main():
         (Tse_d_next, gripper) = array_output(Trajectory[i+1,:])
 
         V, Xerr = feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt)
+        if i==1000:
+            print(V)
+        if i>1900:
+            print(V)
+            pass
         (uthetadot, Je) = get_speeds(V, state)
 
+        #uthetadot = -1e-1*np.array([-10., 10., 10., -10., 0., 0., 0., 0., 0.])
         state = next_state(state, uthetadot, dt, speedlimit)
+
         (Tse, T0e) = get_endeffector(state) # real new position
 
 
