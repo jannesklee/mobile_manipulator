@@ -22,8 +22,6 @@ def test_next_state(initial_state, speeds, expected):
     for i in range(100):
         state = next_state(state, speeds, dt, 100)
 
-    print(state)
-
     assert np.allclose(state[:3], expected[:3], atol=1e-3)
 
 def test_feedforward_control():
