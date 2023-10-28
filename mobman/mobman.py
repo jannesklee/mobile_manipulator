@@ -24,7 +24,7 @@ def next_state(state, speeds, dt, speedlimit):
     else:
         dq_b = np.array([
             Vb[0], 
-            (Vb[1]*np.sin(Vb[0])+Vb[2]*(np.cos(Vb[0]-1.)))/Vb[0],
+            (Vb[1]*np.sin(Vb[0])+Vb[2]*(np.cos(Vb[0])-1.))/Vb[0],
             (Vb[2]*np.sin(Vb[0])+Vb[1]*(1.-np.cos(Vb[0])))/Vb[0]])
 
     dq = np.matmul(np.array([
@@ -238,12 +238,6 @@ def main():
         (Tse_d_next, gripper) = array_output(Trajectory[i+1,:])
 
         V, Xerr = feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt)
-        if i==1000:
-            #print(V)
-            pass
-        if i>1900:
-            #print(V)
-            pass
         (uthetadot, Je) = get_speeds(V, state)
 
         #uthetadot = -1e-1*np.array([-10., 10., 10., -10., 0., 0., 0., 0., 0.])
