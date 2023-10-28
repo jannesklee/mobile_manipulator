@@ -17,7 +17,7 @@ def next_state(state, speeds, dt, speedlimit):
     new_wheel_state = wheel_state + dt*wheel_speeds
 
     # odometry
-    Vb = np.matmul(get_F(), wheel_speeds)
+    Vb = get_F() @ wheel_speeds
 
     if np.abs(Vb[0]) == 0.0:
         dq_b = np.array([0.0, Vb[1], Vb[2]])
@@ -27,10 +27,10 @@ def next_state(state, speeds, dt, speedlimit):
             (Vb[1]*np.sin(Vb[0])+Vb[2]*(np.cos(Vb[0])-1.))/Vb[0],
             (Vb[2]*np.sin(Vb[0])+Vb[1]*(1.-np.cos(Vb[0])))/Vb[0]])
 
-    dq = np.matmul(np.array([
+    dq = np.array([
         [1, 0, 0], 
         [0, np.cos(q[0]), -np.sin(q[0])],
-        [0, np.sin(q[0]), np.cos(q[0])]]), dq_b)
+        [0, np.sin(q[0]), np.cos(q[0])]]) @ dq_b
 
     new_chassis_state = q + dt*dq
 
@@ -84,16 +84,16 @@ def trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff,
 
     # A trajectory to move the gripper to a "standoff" configuration above the final configuration.
     # get same relative position as at the first standoff -> 10s
-    Tsc_rel = np.matmul(mr.TransInv(Tsc_init), Tce_standoff)
-    Tce_finalstandoff = np.matmul(Tsc_final,Tsc_rel)
+    Tsc_rel = mr.TransInv(Tsc_init) @ Tce_standoff
+    Tce_finalstandoff = Tsc_final @ Tsc_rel
     tf4 = 10 # 4s
     N = tf4*100*k
     StandoffToStandoff = np.array(mr.CartesianTrajectory(Tce_standoff, Tce_finalstandoff, tf4, N, method))
     StandoffToStandoffFlat = flatten_output(StandoffToStandoff, 1.)
 
     #A trajectory to move the gripper to the final configuration of the object. -> 4s
-    Tsgrasp_rel = np.matmul(mr.TransInv(Tsc_init), Tce_grasp)
-    Tce_finalgrasp = np.matmul(Tsc_final,Tsgrasp_rel)
+    Tsgrasp_rel = mr.TransInv(Tsc_init) @ Tce_grasp
+    Tce_finalgrasp = Tsc_final @ Tsgrasp_rel
     tf5 = 4
     N = tf5*100*k
     StandoffToGraspFinal = np.array(mr.CartesianTrajectory(Tce_finalstandoff, Tce_finalgrasp, tf5, N, method))
@@ -125,12 +125,14 @@ def trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff,
     return Trajectory
 
 def feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt):
-    VdM = mr.MatrixLog6(np.matmul(mr.TransInv(Tse_d),Tse_d_next))/dt
+    VdM = mr.MatrixLog6(mr.TransInv(Tse_d) @ Tse_d_next)/dt
     Vd = np.array([VdM[1,2],VdM[0,2],VdM[0,1],VdM[0,3],VdM[1,3],VdM[2,3]])
-    X_errM = mr.MatrixLog6(np.matmul(mr.TransInv(Tse),Tse_d))
+    X_errM = mr.MatrixLog6(mr.TransInv(Tse) @ Tse_d)
     X_err = np.array([X_errM[1,2],X_errM[0,2],X_errM[0,1],X_errM[0,3],X_errM[1,3],X_errM[2,3]])
-    AdXXd = mr.Adjoint(np.matmul(mr.TransInv(Tse), Tse_d))
-    V = np.matmul(AdXXd, Vd) + np.matmul(Kp,X_err) + np.matmul(Ki,X_err)*dt
+    AdXXd = mr.Adjoint(mr.TransInv(Tse) @ Tse_d)
+
+    # main routine
+    V = AdXXd @ Vd + Kp @ X_err + (Ki @ X_err)*dt
 
     return V, X_err
 
@@ -152,15 +154,15 @@ def get_speeds(V, state):
     # calculate Jbase
     F = get_F()
     (_, T0e) = get_endeffector(state)
-    Adj = mr.Adjoint(np.matmul(mr.TransInv(T0e), mr.TransInv(Tb0)))
+    Adj = mr.Adjoint(mr.TransInv(T0e) @ mr.TransInv(Tb0))
     F6 = np.vstack([np.zeros(4),np.zeros(4),F,np.zeros(4)])
 
-    Jbase = np.matmul(Adj,F6)
+    Jbase = Adj @ F6
 
     # combine in one jacobian
     Je = np.hstack([Jbase, Jarm])
 
-    u_and_theta_dot = np.matmul(pinv(Je, atol=1e-2),V)
+    u_and_theta_dot = pinv(Je, atol=1e-2) @ V
 
     return u_and_theta_dot, Je
 
@@ -198,7 +200,7 @@ def get_endeffector(state):
         [0., 0., 0., 1.]])
     thetalist = state[3:3+5]
     T0e = mr.FKinBody(M0e, get_B(), thetalist)
-    X = np.matmul(np.matmul(Tsb,Tb0),T0e)
+    X = (Tsb @ Tb0) @ T0e
     return X, T0e
 
 def main():
