@@ -126,9 +126,9 @@ def trajectory_generator(Tse_init, Tsc_init, Tsc_final, Tce_grasp, Tce_standoff,
 
 def feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt):
     VdM = mr.MatrixLog6(mr.TransInv(Tse_d) @ Tse_d_next)/dt
-    Vd = np.array([VdM[1,2],VdM[0,2],VdM[0,1],VdM[0,3],VdM[1,3],VdM[2,3]])
+    Vd = np.array([VdM[2,1],VdM[0,2],VdM[1,0],VdM[0,3],VdM[1,3],VdM[2,3]])
     X_errM = mr.MatrixLog6(mr.TransInv(Tse) @ Tse_d)
-    X_err = np.array([X_errM[1,2],X_errM[0,2],X_errM[0,1],X_errM[0,3],X_errM[1,3],X_errM[2,3]])
+    X_err = np.array([X_errM[2,1],X_errM[0,2],X_errM[1,0],X_errM[0,3],X_errM[1,3],X_errM[2,3]])
     AdXXd = mr.Adjoint(mr.TransInv(Tse) @ Tse_d)
 
     # main routine
@@ -137,14 +137,13 @@ def feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt):
     return V, X_err
 
 def get_speeds(V, state):
-    # prüfe rotation
     varphi = state[0]
     x = state[1]
     y = state[2]
 
     # feedforward
-    Tsb = np.array([[np.cos(varphi), -np.sin(varphi), 0., x],[np.sin(varphi), np.cos(varphi), 0., y],[0., 0., 1, 0.0963],[0., 0., 0., 1.]])
-    Tb0 = np.array([[1, 0., 0., 0.1662],[0., 1, 0., 0.],[0., 0., 1, 0.0026],[0., 0., 0., 1]])
+    Tsb = np.array([[np.cos(varphi), -np.sin(varphi), 0., x],[np.sin(varphi), np.cos(varphi), 0., y],[0., 0., 1., 0.0963],[0., 0., 0., 1.]])
+    Tb0 = np.array([[1., 0., 0., 0.1662],[0., 1., 0., 0.],[0., 0., 1., 0.0026],[0., 0., 0., 1.]])
 
     # calculate Jarm
     B = get_B()
@@ -207,8 +206,6 @@ def main():
     # input for trajectory generator
     Tsc_init = np.array([[1, 0, 0, 1],[0, 1, 0, 0],[0, 0, 1, 0.025],[0, 0, 0, 1]])
     Tsc_final = np.array([[0, 1, 0, 0],[-1, 0, 0, -1],[0, 0, 1, 0.025],[0, 0, 0, 1]])
-    #Tse_init = np.array([[1, 0, 0, 0.033],[0, 1, 0, 0],[0, 0, 1, 0.6546],[0, 0, 0, 1]])
-    #Tse_init = np.array([[1, 0, 0, 0.2],[0, 1, 0, 0],[0, 0, 1, 0.7535],[0, 0, 0, 1]])
     state = np.array([0., 0., 0., 0., 0.0, -0.01, -0.02, 0., 0., 0., 0., 0., 0.])
     (Tse_init, _) = get_endeffector(state)
     xi = -3./4.*np.pi # angle for putting down or grabbing cube
@@ -223,11 +220,11 @@ def main():
     ##### configuration calculated feedback
     # calc dt from k
     dt = 0.01
-    Kp = np.zeros((6,6))
-    #Kp = np.identity(6)
-    Ki = np.zeros((6,6))
-    #Ki = np.identity(6)
-    speedlimit = 3.0
+    #Kp = np.zeros((6,6))
+    Kp = np.identity(6)
+    #Ki = np.zeros((6,6))
+    Ki = np.identity(6)
+    speedlimit = 2.0
 
     # initial start of end-effector (normally not true)
     Tse = Tse_init
@@ -242,10 +239,9 @@ def main():
         V, Xerr = feedback_control(Tse, Tse_d, Tse_d_next, Kp, Ki, dt)
         (uthetadot, Je) = get_speeds(V, state)
 
-        #uthetadot = -1e-1*np.array([-10., 10., 10., -10., 0., 0., 0., 0., 0.])
         state = next_state(state, uthetadot, dt, speedlimit)
 
-        (Tse, T0e) = get_endeffector(state) # real new position
+        (Tse, _) = get_endeffector(state) # real new position
 
 
         if (i % k) == 0:
