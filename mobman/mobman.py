@@ -206,8 +206,10 @@ def main():
     # input for trajectory generator
     Tsc_init = np.array([[1, 0, 0, 1],[0, 1, 0, 0],[0, 0, 1, 0.025],[0, 0, 0, 1]])
     Tsc_final = np.array([[0, 1, 0, 0],[-1, 0, 0, -1],[0, 0, 1, 0.025],[0, 0, 0, 1]])
-    state = np.array([0., 0., 0., 0., 0.0, -0.01, -0.02, 0., 0., 0., 0., 0., 0.])
-    (Tse_init, _) = get_endeffector(state)
+    #state = np.array([0., 0., 0., 0., 0.0, -0.01, -0.02, 0., 0., 0., 0., 0., 0.])
+    #(Tse_init, _) = get_endeffector(state)
+    state = np.array([np.deg2rad(30.0), 0.2, 0., 0., 0.0, -0.01, -0.02, 0., 0., 0., 0., 0., 0.])
+    Tse_init = np.array([[0, 0, 1, 0],[0, 1, 0, 0],[-1, 0, 0, 0.5],[0, 0, 0, 1]])
     xi = -3./4.*np.pi # angle for putting down or grabbing cube
     Tce_standoff = np.array([[np.cos(xi), 0, -np.sin(xi), 1],[0, 1, 0, 0],[np.sin(xi), 0, np.cos(xi), 0.125],[0, 0, 0, 1]])
     Tce_grasp = Tce_standoff.copy()
@@ -222,8 +224,8 @@ def main():
     dt = 0.01
     #Kp = np.zeros((6,6))
     Kp = np.identity(6)
-    #Ki = np.zeros((6,6))
-    Ki = np.identity(6)
+    Ki = np.zeros((6,6))
+    #Ki = np.identity(6)
     speedlimit = 2.0
 
     # initial start of end-effector (normally not true)
