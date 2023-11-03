@@ -12,10 +12,10 @@ The cube is thereby places from one to another position.
 ## Running the script
 The script can be run with
 
-    python mobman.py
-    
+    python mobman/mobman.py
+
 ## Running the tests
 You can run the tests by running
-    
-    pytest -s
+
+    python -m pytest -s
 
