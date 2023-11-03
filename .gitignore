@@ -1,2 +1,4 @@
 *.pyc
+*.csv
+*.ipynb
 __pycache__/
