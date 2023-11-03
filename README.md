@@ -14,6 +14,12 @@ The script can be run with
 
     python mobman/mobman.py
 
+It writes three outputs:
+
+- *trajectory.csv* - the simulated trajectory
+- *states.csv* - simulated states that follow the trajectory
+- *Xerr.csv* - the error between the actual state and the wished trajectory
+
 ## Running the tests
 You can run the tests by running
 
