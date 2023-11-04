@@ -7,8 +7,6 @@ to move a cube from one place to another. It
 - uses odometry,
 - and calculates the states by feedback control.
 
-The cube is thereby places from one to another position.
-
 ## Running the script
 The script can be run with
 
